@@ -36,6 +36,14 @@
             indices: list(range(6))
             mode: 'triangle_fan'
 
+<Agent>:
+    canvas:
+        Color:
+            rgba: 1, 0, 0, 1
+        Ellipse:
+            size: self.size
+            pos: self.pos
+
 <Field>:
     # TODO: use texture with repeat patter instead of this
     canvas:
