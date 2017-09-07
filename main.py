@@ -4,13 +4,17 @@ kivy.require('1.10.0')
 
 # flake8: noqa E402
 from kivy.app import App
+from kivy.clock import Clock
+
 from kivy.graphics import Mesh
-from kivy.properties import ListProperty, ObjectProperty
+from kivy.properties import ListProperty, ObjectProperty, NumericProperty
 from kivy.uix.scatter import ScatterPlane
 from kivy.uix.widget import Widget
+from kivy.uix.label import Label
 
 from collections import deque
 import numpy as np
+import random
 
 
 def aa_sign(p1, p2, p3):
@@ -32,17 +36,17 @@ def all_cells(start):
                 queue.append(cell)
 
 
-# TODO: Create an object to keep track of all the agents, update and create
-#       them.
-class Agent(object):
+class Agent(Widget):
     '''
     A programmable agent to simulate individuals in the swarm.
 
     An Agent should act in accordance with some goal, as collecting the most
     food.
     '''
-    def __init__(self, cell_location=None):
-        self.loc = cell_location
+    cell = ObjectProperty(None)
+
+    def on_cell(self, instance, new_cell):
+        self.center = new_cell.center
 
     def act(self):
         '''
@@ -58,7 +62,7 @@ class Agent(object):
         5) put food into cell
         The information they read and put should be simple.
         '''
-        pass
+        self.cell = random.choice(self.cell.adj)
 
 
 class Cell(Widget):
@@ -125,6 +129,10 @@ class Field(ScatterPlane):
 
 class SwarmApp(App):
 
+    def update(self, dt):
+        self.agent.act()
+        self.agent.cell.create_adj_cells()
+
     def build(self):
         root = Field()
         cell_size = 50, 50
@@ -135,6 +143,11 @@ class SwarmApp(App):
         self.cell.create_adj_cells()
         self.cell.size = 60, 60
         self.cell.pos = [500, 500]
+
+        self.agent = Agent(cell=self.cell, size=[25, 25])
+        root.add_widget(self.agent)
+
+        Clock.schedule_interval(self.update, 1)
 
         return root
 
