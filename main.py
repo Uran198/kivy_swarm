@@ -69,6 +69,8 @@ class Cell(Widget):
     '''
     vertices = ListProperty(None)
     adj = ListProperty([])
+    prev = ObjectProperty(None)
+    angle = NumericProperty(0)
 
     def collide_point(self, x, y):
         if super().collide_point(x, y):
@@ -87,36 +89,31 @@ class Cell(Widget):
             # return True
         return super().on_touch_down(touch)
 
-    def create_adj_cells(self, center=None, size=None):
+    def create_adj_cells(self):
         '''
         Creates adjacent cells if they are not already created.
         center and size arguments needed when creating cells before all the
         intiation of width and center are done. And that of the parent widget.
         '''
-        if not center:
-            center = self.center
-        if not size:
-            size = self.size
         r = self.width * np.sqrt(3)/2
         print(self.center)
         print(self.width)
         print(len(self.adj))
         for i in range(6):
             angle = self.hex_step*(i+0.5)
-            x = float(self.center_x + np.cos(angle)*r)
-            y = float(self.center_y + np.sin(angle)*r)
+            x = float(self.center_x + np.cos(angle)*self.dist)
+            y = float(self.center_y + np.sin(angle)*self.dist)
             if not any(cell.collide_point(x, y) for cell in self.adj):
                 new_cell = Cell(prev=self, angle=angle, size=self.size)
                 for cell in [c for c in all_cells(self)
                              if np.linalg.norm(
-                             np.subtract(c.center, new_cell.center)) < r*1.5]:
+                                    np.subtract(c.center, new_cell.center))
+                                < self.dist*1.5]:
                         cell.adj.append(new_cell)
                         new_cell.adj.append(cell)
                 self.parent.add_widget(new_cell)
         print(len(self.adj))
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
 
 class Field(ScatterPlane):

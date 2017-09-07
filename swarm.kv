@@ -7,8 +7,6 @@
     # Although Cell's size and position should not change by the application logic,
     # they can change while initiating the layout.
     dist: self.width * np.sqrt(3)/2
-    prev: None
-    angle: 0
     center_x: float(self.prev.center_x + np.cos(self.angle)*self.dist if self.prev else self.center_x)
     center_y: float(self.prev.center_y + np.sin(self.angle)*self.dist if self.prev else self.center_y)
     width: self.prev.width if self.prev else self.width
@@ -26,9 +24,10 @@
             # building hexagon
             vertices: list(chain(*self.vertices))
             indices: list(range(6))
-            mode: 'line_loop'  # 'line_loop'
+            mode: 'line_loop'
 
 <Field>:
+    # TODO: use texture with repeat patter instead of this
     canvas:
         Color:
             rgba: 0, 0, 1, 0.5
