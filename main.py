@@ -119,6 +119,12 @@ class Cell(Widget):
         print(len(self.adj))
 
 
+class HomeCell(Cell):
+    food = NumericProperty(0)
+
+    def on_food(self, instance, val):
+        print("Now have {} food.".format(self.food))
+
 
 class Field(ScatterPlane):
     '''
@@ -137,7 +143,7 @@ class SwarmApp(App):
         root = Field()
         cell_size = 50, 50
 
-        self.cell = Cell(size=cell_size, center=[200, 200])
+        self.cell = HomeCell(size=cell_size, center=[200, 200])
         root.add_widget(self.cell)
 
         self.cell.create_adj_cells()

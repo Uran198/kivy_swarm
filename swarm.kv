@@ -26,6 +26,16 @@
             indices: list(range(6))
             mode: 'line_loop'
 
+<HomeCell>:
+    canvas.after:
+        Color:
+            rgba: 0, 1, 0, 1
+        Mesh:
+            # building hexagon
+            vertices: list(chain(*self.vertices))
+            indices: list(range(6))
+            mode: 'triangle_fan'
+
 <Field>:
     # TODO: use texture with repeat patter instead of this
     canvas:
