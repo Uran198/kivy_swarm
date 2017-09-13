@@ -90,7 +90,6 @@ class Cell(Widget):
         if self.collide_point(*touch.pos):
             print("Touched {}".format(self.center))
             self.create_adj_cells()
-            # return True
         return super().on_touch_down(touch)
 
     def create_adj_cells(self):
@@ -99,10 +98,12 @@ class Cell(Widget):
         center and size arguments needed when creating cells before all the
         intiation of width and center are done. And that of the parent widget.
         '''
+        if len(self.adj) >= 6:
+            # TODO: throw error if > 6
+            # TODO: should 6 be saved to some variable, or keep it as a magic
+            #       constant?
+            return
         r = self.width * np.sqrt(3)/2
-        print(self.center)
-        print(self.width)
-        print(len(self.adj))
         for i in range(6):
             angle = self.hex_step*(i+0.5)
             x = float(self.center_x + np.cos(angle)*self.dist)
@@ -116,7 +117,6 @@ class Cell(Widget):
                         cell.adj.append(new_cell)
                         new_cell.adj.append(cell)
                 self.parent.add_widget(new_cell)
-        print(len(self.adj))
 
 
 class HomeCell(Cell):
