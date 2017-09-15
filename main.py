@@ -99,6 +99,32 @@ class Hex(object):
 
         return ccs[0], ccs[2]
 
+    def __add__(self, other):
+        if isinstance(other, Hex):
+            return Hex(self.q + other.q, self.r + other.r, self.size)
+        elif isinstance(other, tuple) and len(other) == 2:
+            return Hex(self.q + other[0], self.r + other[1], self.size)
+        else:
+            raise NotImplemented
+
+    def __radd__(self, other):
+        if isinstance(other, tuple):
+            return Hex(self.q + other[0], self.r + other[1], self.size)
+        else:
+            raise NotImplemented
+
+    def __iadd__(self, other):
+        if isinstance(other, Hex):
+            self.q += other.q
+            self.r += other.r
+            return self
+        elif isinstance(other, tuple) and len(other) == 2:
+            self.q += other[0]
+            self.r += other[1]
+            return self
+        else:
+            raise NotImplemented
+
 
 class Field(ScatterPlane):
     '''
