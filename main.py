@@ -49,7 +49,7 @@ HexInfo = namedtuple(
 
 
 class Hex(object):
-    def __init__(self, q, r, hex_info):
+    def __init__(self, q, r, size):
         '''
         Initiates the Hex, with the coordinates q, r in Axial coordinates
         and the origin in (x_off, y_off) in the pixel coordinates.
@@ -60,15 +60,13 @@ class Hex(object):
         '''
         self.q = q
         self.r = r
-        self.hex_info = hex_info
-        self.size = hex_info.size
+        self.size = size
 
     @property
     def _pixcenter(self):
         ''' Returns pixel coordinates of the center. '''
-        x = (self.hex_info.x_off +
-             self.size * np.sqrt(3) * (self.q + self.r / 2))
-        y = self.hex_info.y_off + self.size * 3 / 2 * self.r
+        x = self.size * np.sqrt(3) * (self.q + self.r / 2)
+        y = self.size * 3 / 2 * self.r
         return x, y
 
     @property
@@ -83,8 +81,6 @@ class Hex(object):
         Converts pos in pixel coordinates with offset to (q, r) pair in
         Axial coordinates.
         '''
-        x -= self.hex_info.x_off
-        y -= self.hex_info.y_off
         q = (x * np.sqrt(3) / 3 - y / 3) / self.size
         r = y * 2 / 3 / self.size
 
@@ -120,15 +116,17 @@ class Field(ScatterPlane):
             color=Color(),
         )
 
-        self.origin = Hex(0, 0, self.hex_info)
+        self.origin = Hex(0, 0, cell_size)
         self.grid = {(0, 0): self.origin}
 
         self.bind(pos=self.redraw, size=self.redraw)
 
     def redraw(self, *args):
+        cx, cy = self.to_local(*self.center)
         self.canvas.clear()
         for _, h in self.grid.items():
-            vertices = list(chain(*[(x, y, 0, 0) for x, y in h.vertices]))
+            vertices = list(chain(*[(x + cx, y + cy, 0, 0)
+                                    for x, y in h.vertices]))
             indices = list(range(6))
             self.canvas.add(self.hex_info.color)
             self.canvas.add(Mesh(vertices=vertices, indices=indices,
@@ -137,12 +135,15 @@ class Field(ScatterPlane):
     def on_touch_down(self, touch):
         super().on_touch_down(touch)
 
-        touch_pos = self.to_local(touch.x, touch.y)
-        q, r = self.origin.pixel_to_hex(*touch_pos)
+        x, y = self.to_local(touch.x, touch.y)
+        cx, cy = self.to_local(*self.center)
+        x -= cx
+        y -= cy
+        q, r = self.origin.pixel_to_hex(x, y)
         if (q, r) in self.grid:
-            print("Touched ({}, {}) in {}.".format(q, r, touch_pos))
+            print("Touched ({}, {}) in {}.".format(q, r, (x, y)))
         else:
-            self.grid[(q, r)] = Hex(q, r, self.hex_info)
+            self.grid[(q, r)] = Hex(q, r, self.hex_info.size)
             self.redraw()
 
         return True
