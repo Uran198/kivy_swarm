@@ -2,38 +2,17 @@ import kivy
 # kivy requires this statement to be before other kivy imports
 kivy.require('1.10.0')
 
-# flake8: noqa E402
 from kivy.app import App
-from kivy.clock import Clock
 
-from kivy.graphics import Mesh
-from kivy.properties import ListProperty, ObjectProperty, NumericProperty
+from kivy.graphics import Mesh, Color
+from kivy.properties import ObjectProperty
 from kivy.uix.scatter import ScatterPlane
 from kivy.uix.widget import Widget
-from kivy.uix.label import Label
 
-from collections import deque
+from collections import namedtuple
+from itertools import chain
 import numpy as np
 import random
-
-
-def aa_sign(p1, p2, p3):
-    ''' Returns acute angle sign of triple p1, p2, p3. '''
-    return np.sign(np.cross(np.subtract(p3, p1), np.subtract(p2, p1)))
-
-
-def all_cells(start):
-    ''' Runs BFS and yields all the cells on the way. '''
-    saw = {start}
-    queue = deque([start])
-    # TODO: Is len O(1) for deque?
-    while len(queue) > 0:
-        u = queue.pop()
-        yield u
-        for cell in u.adj:
-            if cell not in saw:
-                saw.add(cell)
-                queue.append(cell)
 
 
 class Agent(Widget):
@@ -65,72 +44,108 @@ class Agent(Widget):
         self.cell = random.choice(self.cell.adj)
 
 
-class Cell(Widget):
-    '''
-    Hexagon cell.
-    NOTE: Actual width is a bit smaller from the saved width for the sake of
-    simplicity. actual_width = sqrt(3)/2 * saved_width
-    '''
-    vertices = ListProperty(None)
-    adj = ListProperty([])
-    prev = ObjectProperty(None)
-    angle = NumericProperty(0)
+HexInfo = namedtuple(
+    'HexInfo', ['x_off', 'y_off', 'size', 'mesh_mode', 'color'])
 
-    def collide_point(self, x, y):
-        if super().collide_point(x, y):
-            xy = [(x, y) for x, y, _, _ in self.vertices]
-            cent = tuple(self.center)
-            for p1, p2 in zip(xy, xy[1:] + xy[:1]):
-                if aa_sign(p1, p2, cent) * aa_sign(p1, p2, (x, y)) < 0:
-                    return False
-            return True
-        return False
 
-    def on_touch_down(self, touch):
-        if self.collide_point(*touch.pos):
-            print("Touched {}".format(self.center))
-            self.create_adj_cells()
-        return super().on_touch_down(touch)
-
-    def create_adj_cells(self):
+class Hex(object):
+    def __init__(self, q, r, hex_info):
         '''
-        Creates adjacent cells if they are not already created.
-        center and size arguments needed when creating cells before all the
-        intiation of width and center are done. And that of the parent widget.
+        Initiates the Hex, with the coordinates q, r in Axial coordinates
+        and the origin in (x_off, y_off) in the pixel coordinates.
+
+        For more information on the Axial coordinates and hex coordinate system
+        and algorithms check out http://www.redblobgames.com/grids/hexagons/ by
+        Amit Patel.
         '''
-        if len(self.adj) >= 6:
-            # TODO: throw error if > 6
-            # TODO: should 6 be saved to some variable, or keep it as a magic
-            #       constant?
-            return
-        r = self.width * np.sqrt(3)/2
-        for i in range(6):
-            angle = self.hex_step*(i+0.5)
-            x = float(self.center_x + np.cos(angle)*self.dist)
-            y = float(self.center_y + np.sin(angle)*self.dist)
-            if not any(cell.collide_point(x, y) for cell in self.adj):
-                new_cell = Cell(prev=self, angle=angle, size=self.size)
-                for cell in [c for c in all_cells(self)
-                             if np.linalg.norm(
-                                    np.subtract(c.center, new_cell.center))
-                                < self.dist*1.5]:
-                        cell.adj.append(new_cell)
-                        new_cell.adj.append(cell)
-                self.parent.add_widget(new_cell)
+        self.q = q
+        self.r = r
+        self.hex_info = hex_info
+        self.size = hex_info.size
 
+    @property
+    def _pixcenter(self):
+        ''' Returns pixel coordinates of the center. '''
+        x = (self.hex_info.x_off +
+             self.size * np.sqrt(3) * (self.q + self.r / 2))
+        y = self.hex_info.y_off + self.size * 3 / 2 * self.r
+        return x, y
 
-class HomeCell(Cell):
-    food = NumericProperty(0)
+    @property
+    def vertices(self):
+        x, y = self._pixcenter
+        return [(float(x + np.cos(np.pi * (i + 0.5) / 3) * self.size),
+                 float(y + np.sin(np.pi * (i + 0.5) / 3) * self.size))
+                for i in range(6)]
 
-    def on_food(self, instance, val):
-        print("Now have {} food.".format(self.food))
+    def pixel_to_hex(self, x, y):
+        '''
+        Converts pos in pixel coordinates with offset to (q, r) pair in
+        Axial coordinates.
+        '''
+        x -= self.hex_info.x_off
+        y -= self.hex_info.y_off
+        q = (x * np.sqrt(3) / 3 - y / 3) / self.size
+        r = y * 2 / 3 / self.size
+
+        return Hex.axial_round(q, r)
+
+    @staticmethod
+    def axial_round(q, r):
+        '''
+        Converting to Cube coordinates, rounding up to nearest integers and
+        resetting the component with biggest change so that x+y+z=0 stands.
+        '''
+        ccs = [q, -q - r, r]
+        ind = np.argmax([np.abs(np.rint(x) - x) for x in ccs])
+        ccs = [int(np.rint(x)) for x in ccs]
+        ccs[ind] = - ccs[(ind + 1) % 3] - ccs[(ind + 2) % 3]
+
+        return ccs[0], ccs[2]
 
 
 class Field(ScatterPlane):
     '''
     This is the Field which will contain cells.
     '''
-    pass
+
+    def __init__(self, cell_size=25, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cell_size = cell_size
+        self.hex_info = HexInfo(
+            x_off=self.center_x,
+            y_off=self.center_y,
+            size=cell_size,
+            mesh_mode='line_loop',
+            color=Color(),
+        )
+
+        self.origin = Hex(0, 0, self.hex_info)
+        self.grid = {(0, 0): self.origin}
+
+        self.bind(pos=self.redraw, size=self.redraw)
+
+    def redraw(self, *args):
+        self.canvas.clear()
+        for _, h in self.grid.items():
+            vertices = list(chain(*[(x, y, 0, 0) for x, y in h.vertices]))
+            indices = list(range(6))
+            self.canvas.add(self.hex_info.color)
+            self.canvas.add(Mesh(vertices=vertices, indices=indices,
+                                 mode=self.hex_info.mesh_mode))
+
+    def on_touch_down(self, touch):
+        super().on_touch_down(touch)
+
+        touch_pos = self.to_local(touch.x, touch.y)
+        q, r = self.origin.pixel_to_hex(*touch_pos)
+        if (q, r) in self.grid:
+            print("Touched ({}, {}) in {}.".format(q, r, touch_pos))
+        else:
+            self.grid[(q, r)] = Hex(q, r, self.hex_info)
+            self.redraw()
+
+        return True
 
 
 class SwarmApp(App):
@@ -141,19 +156,11 @@ class SwarmApp(App):
 
     def build(self):
         root = Field()
-        cell_size = 50, 50
 
-        self.cell = HomeCell(size=cell_size, center=[200, 200])
-        root.add_widget(self.cell)
+        # self.agent = Agent(cell=self.cell, size=[25, 25])
+        # root.add_widget(self.agent)
 
-        self.cell.create_adj_cells()
-        self.cell.size = 60, 60
-        self.cell.pos = [500, 500]
-
-        self.agent = Agent(cell=self.cell, size=[25, 25])
-        root.add_widget(self.agent)
-
-        Clock.schedule_interval(self.update, 1)
+        # Clock.schedule_interval(self.update, 1)
 
         return root
 
