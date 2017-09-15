@@ -49,6 +49,8 @@ HexInfo = namedtuple(
 
 
 class Hex(object):
+    dirs = [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)]
+
     def __init__(self, q, r, size):
         '''
         Initiates the Hex, with the coordinates q, r in Axial coordinates
@@ -61,6 +63,23 @@ class Hex(object):
         self.q = q
         self.r = r
         self.size = size
+
+    def create_neighbor(self, di):
+        '''
+        Returns newly created neighbor of the cell in the direction di,
+        which should be between 0 and 6 as per Hex.dirs.
+        '''
+        if di < 0 or di > 6:
+            raise NotImplemented
+        return self + Hex.dirs[di]
+
+    def neighbor_coordinates(self, di):
+        '''
+        Returns tuple of coordinates of the neighbor in the given direction di.
+        '''
+        if di < 0 or di > 6:
+            raise NotImplemented
+        return (Hex.dirs[di][0] + self.q, Hex.dirs[di][1] + self.r)
 
     @property
     def _pixcenter(self):
@@ -169,7 +188,12 @@ class Field(ScatterPlane):
         if (q, r) in self.grid:
             print("Touched ({}, {}) in {}.".format(q, r, (x, y)))
         else:
-            self.grid[(q, r)] = Hex(q, r, self.hex_info.size)
+            new_cell = Hex(q, r, self.hex_info.size)
+            self.grid[(q, r)] = new_cell
+            for di in range(6):
+                nei_c = new_cell.neighbor_coordinates(di)
+                if nei_c not in self.grid:
+                    self.grid[nei_c] = new_cell.create_neighbor(di)
             self.redraw()
 
         return True
