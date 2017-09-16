@@ -4,6 +4,7 @@ kivy.require('1.10.0')
 
 from kivy.app import App
 
+from kivy.clock import Clock
 from kivy.graphics import Mesh, Color
 from kivy.properties import ObjectProperty
 from kivy.uix.scatter import ScatterPlane
@@ -165,18 +166,21 @@ class Field(ScatterPlane):
         self.origin = Hex(0, 0, cell_size)
         self.grid = {(0, 0): self.origin}
 
-        self.bind(pos=self.redraw, size=self.redraw)
+        self.canvas.add(self.hex_info.color)
+        # At the __init__ height and width, and consecutively center may be not
+        # established, yet due to layout logic.
+        Clock.schedule_once(
+            lambda dt: self.canvas.add(self._create_mesh(self.origin))
+        )
 
-    def redraw(self, *args):
+    def _create_mesh(self, cell):
+        ''' Returns a mesh for the cell. '''
         cx, cy = self.to_local(*self.center)
-        self.canvas.clear()
-        for _, h in self.grid.items():
-            vertices = list(chain(*[(x + cx, y + cy, 0, 0)
-                                    for x, y in h.vertices]))
-            indices = list(range(6))
-            self.canvas.add(self.hex_info.color)
-            self.canvas.add(Mesh(vertices=vertices, indices=indices,
-                                 mode=self.hex_info.mesh_mode))
+        vertices = list(chain(*[(x + cx, y + cy, 0, 0)
+                                for x, y in cell.vertices]))
+        indices = list(range(6))
+        return Mesh(vertices=vertices, indices=indices,
+                    mode=self.hex_info.mesh_mode)
 
     def on_touch_down(self, touch):
         super().on_touch_down(touch)
@@ -195,7 +199,7 @@ class Field(ScatterPlane):
                 nei_c = Hex.neighbor_coordinates(q, r, di)
                 if nei_c not in self.grid:
                     self.grid[nei_c] = new_cell.create_neighbor(di)
-            self.redraw()
+                    self.canvas.add(self._create_mesh(self.grid[nei_c]))
 
         return True
 
