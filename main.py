@@ -73,13 +73,14 @@ class Hex(object):
             raise NotImplemented
         return self + Hex.dirs[di]
 
-    def neighbor_coordinates(self, di):
+    @staticmethod
+    def neighbor_coordinates(q, r, di):
         '''
         Returns tuple of coordinates of the neighbor in the given direction di.
         '''
         if di < 0 or di > 6:
             raise NotImplemented
-        return (Hex.dirs[di][0] + self.q, Hex.dirs[di][1] + self.r)
+        return (Hex.dirs[di][0] + q, Hex.dirs[di][1] + r)
 
     @property
     def _pixcenter(self):
@@ -191,7 +192,7 @@ class Field(ScatterPlane):
             new_cell = Hex(q, r, self.hex_info.size)
             self.grid[(q, r)] = new_cell
             for di in range(6):
-                nei_c = new_cell.neighbor_coordinates(di)
+                nei_c = Hex.neighbor_coordinates(q, r, di)
                 if nei_c not in self.grid:
                     self.grid[nei_c] = new_cell.create_neighbor(di)
             self.redraw()
