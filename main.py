@@ -169,13 +169,17 @@ class Field(ScatterPlane):
         self.canvas.add(self.hex_info.color)
         # At the __init__ height and width, and consecutively center may be not
         # established, yet due to layout logic.
-        Clock.schedule_once(
-            lambda dt: self.canvas.add(self._create_mesh(self.origin))
-        )
+        Clock.schedule_once(self._init_after)
+
+    def _init_after(self, dt):
+        ''' Perform intializations after the layout is finalized. '''
+        self.pix_origin = self.to_local(*self.center)
+        self.agent.center = self.pix_origin
+        self.canvas.add(self._create_mesh(self.origin))
 
     def _create_mesh(self, cell):
         ''' Returns a mesh for the cell. '''
-        cx, cy = self.to_local(*self.center)
+        cx, cy = self.pix_origin
         vertices = list(chain(*[(x + cx, y + cy, 0, 0)
                                 for x, y in cell.vertices]))
         indices = list(range(6))
@@ -186,9 +190,8 @@ class Field(ScatterPlane):
         super().on_touch_down(touch)
 
         x, y = self.to_local(touch.x, touch.y)
-        cx, cy = self.to_local(*self.center)
-        x -= cx
-        y -= cy
+        x -= self.pix_origin[0]
+        y -= self.pix_origin[1]
         q, r = self.origin.pixel_to_hex(x, y)
         if (q, r) in self.grid:
             print("Touched ({}, {}) in {}.".format(q, r, (x, y)))
