@@ -16,21 +16,33 @@ import numpy as np
 import random
 
 
-class Agent(Widget):
+class AgentWidget(Widget):
+    '''
+    Widget responsible for drawing an agent.
+    '''
+    pass
+
+
+class State(object):
+    pass
+
+
+class Agent(object):
     '''
     A programmable agent to simulate individuals in the swarm.
 
     An Agent should act in accordance with some goal, as collecting the most
     food.
     '''
-    cell = ObjectProperty(None)
+    def __init__(self, all_actions):
+        ''' Initiates agent. '''
+        self.all_actions = all_actions
 
-    def on_cell(self, instance, new_cell):
-        self.center = new_cell.center
-
-    def act(self):
+    def act(self, state):
         '''
-        Make a turn.
+        Make a turn. Returns an action that agent wants to perform.
+        state should convey information about location and neighbors.
+
         All agents move at the same time.
         During the turn they can:
         1) read information from the cell they are in (maybe, also from
@@ -42,13 +54,16 @@ class Agent(Widget):
         5) put food into cell
         The information they read and put should be simple.
         '''
-        self.cell = random.choice(self.cell.adj)
+        pass
 
 
 HexInfo = namedtuple(
     'HexInfo', ['x_off', 'y_off', 'size', 'mesh_mode', 'color'])
 
 
+# TODO: Don't need this class. can add tuples in a separate method or generate
+# neighbors, as well as generate the list of vertices in the Field class.
+# Unless they'll contain some information.
 class Hex(object):
     dirs = [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)]
 
@@ -84,15 +99,15 @@ class Hex(object):
         return (Hex.dirs[di][0] + q, Hex.dirs[di][1] + r)
 
     @property
-    def _pixcenter(self):
+    def pixcenter(self):
         ''' Returns pixel coordinates of the center. '''
         x = self.size * np.sqrt(3) * (self.q + self.r / 2)
         y = self.size * 3 / 2 * self.r
-        return x, y
+        return float(x), float(y)
 
     @property
     def vertices(self):
-        x, y = self._pixcenter
+        x, y = self.pixcenter
         return [(float(x + np.cos(np.pi * (i + 0.5) / 3) * self.size),
                  float(y + np.sin(np.pi * (i + 0.5) / 3) * self.size))
                 for i in range(6)]
@@ -147,10 +162,24 @@ class Hex(object):
             raise NotImplemented
 
 
+# TODO: Move hex method into Grid.
+class Grid(dict):
+
+    def __init__(self, cell_size, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cell_size = cell_size
+
+    def __missing__(self, key):
+        if not isinstance(key, tuple) or len(key) != 2:
+            return super().__missing__(self, key)
+        return Hex(key[0], key[1], self.cell_size)
+
+
 class Field(ScatterPlane):
     '''
     This is the Field which will contain cells.
     '''
+    agent_widget = ObjectProperty(None)
 
     def __init__(self, cell_size=25, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -164,18 +193,30 @@ class Field(ScatterPlane):
         )
 
         self.origin = Hex(0, 0, cell_size)
-        self.grid = {(0, 0): self.origin}
+        # TODO: Can create custom dictionary for grid extending default and
+        # create Hexes and neighbors on misses.
+        self.grid = Grid(cell_size)
+        self.grid[(0, 0)] = self.origin
 
         self.canvas.add(self.hex_info.color)
         # At the __init__ height and width, and consecutively center may be not
         # established, yet due to layout logic.
         Clock.schedule_once(self._init_after)
 
+        Clock.schedule_interval(self.update, 1)
+
     def _init_after(self, dt):
-        ''' Perform intializations after the layout is finalized. '''
+        ''' Perform initializations after the layout is finalized. '''
         self.pix_origin = self.to_local(*self.center)
-        self.agent.center = self.pix_origin
+        self._place_agent_widget(self.origin)
         self.canvas.add(self._create_mesh(self.origin))
+
+    def _place_agent_widget(self, cell):
+        # TODO: Can use vectors with add capability?
+        # TODO: what if agent has more information apart from location?
+        self.agent_loc = (cell.q, cell.r)
+        self.agent_widget.center = list(
+            map(lambda x, y: x + y, self.pix_origin, cell.pixcenter))
 
     def _create_mesh(self, cell):
         ''' Returns a mesh for the cell. '''
@@ -192,35 +233,39 @@ class Field(ScatterPlane):
         x, y = self.to_local(touch.x, touch.y)
         x -= self.pix_origin[0]
         y -= self.pix_origin[1]
+        # FIXME: Doesn't look right
         q, r = self.origin.pixel_to_hex(x, y)
         if (q, r) in self.grid:
             print("Touched ({}, {}) in {}.".format(q, r, (x, y)))
         else:
-            new_cell = Hex(q, r, self.hex_info.size)
-            self.grid[(q, r)] = new_cell
+            # Implicitly creating hex values.
+            # TODO: Is there a better explicit way?
+            self.canvas.add(self._create_mesh(self.grid[(q, r)]))
             for di in range(6):
                 nei_c = Hex.neighbor_coordinates(q, r, di)
                 if nei_c not in self.grid:
-                    self.grid[nei_c] = new_cell.create_neighbor(di)
+                    # Implicitly creating hex values.
                     self.canvas.add(self._create_mesh(self.grid[nei_c]))
 
+        self._place_agent_widget(self.grid[(q, r)])
+
         return True
+
+    # TODO: Shouldn't this feel better in SwarmApp?
+    def update(self, dt):
+        rnd = random.choice(range(6))
+        nei = Hex.neighbor_coordinates(
+            self.agent_loc[0], self.agent_loc[1], rnd)
+        # TODO: Don't like it. Can canvas be in Grid?
+        if nei not in self.grid:
+            self.canvas.add(self._create_mesh(self.grid[nei]))
+        self._place_agent_widget(self.grid[nei])
 
 
 class SwarmApp(App):
 
-    def update(self, dt):
-        self.agent.act()
-        self.agent.cell.create_adj_cells()
-
     def build(self):
         root = Field()
-
-        # self.agent = Agent(cell=self.cell, size=[25, 25])
-        # root.add_widget(self.agent)
-
-        # Clock.schedule_interval(self.update, 1)
-
         return root
 
 

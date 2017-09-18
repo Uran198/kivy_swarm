@@ -1,42 +1,6 @@
 #:kivy 1.10.0
-#:import np numpy
-#:import chain itertools.chain
 
-<Cell>:
-    # Need this thing here so it will be simpler with all the bindings.
-    # Although Cell's size and position should not change by the application logic,
-    # they can change while initiating the layout.
-    dist: self.width * np.sqrt(3)/2
-    center_x: float(self.prev.center_x + np.cos(self.angle)*self.dist if self.prev else self.center_x)
-    center_y: float(self.prev.center_y + np.sin(self.angle)*self.dist if self.prev else self.center_y)
-    width: self.prev.width if self.prev else self.width
-    height: self.prev.height if self.prev else self.height
-    hex_step: np.pi/3
-    vertices:
-        [(
-        self.center_x + np.cos(self.hex_step*i)*self.width/2,
-        self.center_y + np.sin(self.hex_step*i)*self.height/2,
-        0, 0) for i in range(6)]
-    canvas:
-        Color:
-            rgba: 1, 1, 1, 1
-        Mesh:
-            # building hexagon
-            vertices: list(chain(*self.vertices))
-            indices: list(range(6))
-            mode: 'line_loop'
-
-<HomeCell>:
-    canvas.after:
-        Color:
-            rgba: 0, 1, 0, 1
-        Mesh:
-            # building hexagon
-            vertices: list(chain(*self.vertices))
-            indices: list(range(6))
-            mode: 'triangle_fan'
-
-<Agent>:
+<AgentWidget>:
     canvas:
         Color:
             rgba: 1, 0, 0, 1
@@ -46,8 +10,7 @@
 
 <Field>:
     # TODO: use texture with repeat patter instead of this
-    canvas:
-        Color:
-            rgba: 0, 0, 1, 0.5
-        Rectangle:
-            size: self.size
+    agent_widget: agent
+    AgentWidget:
+        id: agent
+        size: 20, 20
