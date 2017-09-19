@@ -14,6 +14,7 @@ from collections import namedtuple
 from itertools import chain
 import numpy as np
 import random
+from enum import Enum
 
 
 class AgentWidget(Widget):
@@ -23,8 +24,36 @@ class AgentWidget(Widget):
     pass
 
 
-class State(object):
+# Inheriting namedtuple to add a docstring.
+class State(namedtuple('State', ['cell', 'neighbors'])):
+    '''
+    State contains cell in which agent is situated and all adjacent cells.
+    '''
     pass
+
+
+class ActionType(Enum):
+    ''' All possible action types the agent can take. '''
+    MOVE = object()
+
+
+class Action(object):
+    ''' All the actions the agent can take. '''
+
+    def __init__(self, act_type, di=None):
+        if not (0 <= di < 6):
+            raise ValueError
+        self.act_type = act_type
+        if act_type is ActionType.MOVE:
+            self.di = di
+
+    def perform(self, grid, state):
+        ''' Returns the new state in accordance with action. '''
+        if self.act_type is ActionType.MOVE:
+            cell = state.neighbors[self.di]
+            neighbors = grid.neighbors(cell)
+            return State(cell=cell, neighbors=neighbors)
+        return state
 
 
 class Agent(object):
@@ -55,10 +84,6 @@ class Agent(object):
         The information they read and put should be simple.
         '''
         pass
-
-
-HexInfo = namedtuple(
-    'HexInfo', ['x_off', 'y_off', 'size', 'mesh_mode', 'color'])
 
 
 # TODO: Don't need this class. can add tuples in a separate method or generate
@@ -162,17 +187,59 @@ class Hex(object):
             raise NotImplemented
 
 
-# TODO: Move hex method into Grid.
+# TODO: Still feels strange to have so much logic here and feels not right to
+# inherit dict. Use agregation instead?
+# Operations with canvas are very implicit and nothing is deleted. Well, it is
+# assumed that that grid cells won't be removed, which makes sense, but what if
+# some cells will have to be rendered differently. Can maybe draw on top and
+# then remove?
 class Grid(dict):
 
-    def __init__(self, cell_size, *args, **kwargs):
+    def __init__(self, canvas, mesh_mode, color, cell_size, pix_origin=None,
+                 *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.canvas = canvas
+        self.mesh_mode = mesh_mode
         self.cell_size = cell_size
+        self.pix_origin = pix_origin
+        self.canvas.add(color)
 
     def __missing__(self, key):
         if not isinstance(key, tuple) or len(key) != 2:
             return super().__missing__(self, key)
-        return Hex(key[0], key[1], self.cell_size)
+        cell = Hex(key[0], key[1], self.cell_size)
+        # TODO: Very much not sure if missing should assign a new key to value
+        # Can istead remap __getitem__ to return self.getdefaulr(key, cell)
+        # after checking if the element is in the dict. It might be fine just
+        # to return what could have been here, the problem that it won't be
+        # added to canvas.
+        # self[key] = cell
+        return cell
+
+    def __setitem__(self, key, cell):
+        if not isinstance(key, tuple) or len(key) != 2:
+            raise KeyError
+
+        cx, cy = self.pix_origin
+        vertices = list(chain(*[(x + cx, y + cy, 0, 0)
+                                for x, y in cell.vertices]))
+        indices = list(range(6))
+        # TODO: Should this be here? Where should it be?
+        self.canvas.add(
+            Mesh(vertices=vertices, indices=indices, mode=self.mesh_mode))
+        return super().__setitem__(key, cell)
+
+    def set_default(self, key):
+        ''' Sets the default value to the key. '''
+        if key not in self:
+            self[key] = self.__missing__(key)
+
+    def neighbors(self, cell):
+        result = []
+        for di in range(6):
+            nq, nr = Hex.neighbor_coordinates(cell.q, cell.r, di)
+            result.append(self[(nq, nr)])
+        return result
 
 
 class Field(ScatterPlane):
@@ -183,22 +250,10 @@ class Field(ScatterPlane):
 
     def __init__(self, cell_size=25, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.cell_size = cell_size
-        self.hex_info = HexInfo(
-            x_off=self.center_x,
-            y_off=self.center_y,
-            size=cell_size,
-            mesh_mode='line_loop',
-            color=Color(),
-        )
 
         self.origin = Hex(0, 0, cell_size)
-        # TODO: Can create custom dictionary for grid extending default and
-        # create Hexes and neighbors on misses.
-        self.grid = Grid(cell_size)
-        self.grid[(0, 0)] = self.origin
+        self.grid = Grid(self.canvas, 'line_loop', Color(), cell_size)
 
-        self.canvas.add(self.hex_info.color)
         # At the __init__ height and width, and consecutively center may be not
         # established, yet due to layout logic.
         Clock.schedule_once(self._init_after)
@@ -207,59 +262,42 @@ class Field(ScatterPlane):
 
     def _init_after(self, dt):
         ''' Perform initializations after the layout is finalized. '''
-        self.pix_origin = self.to_local(*self.center)
-        self._place_agent_widget(self.origin)
-        self.canvas.add(self._create_mesh(self.origin))
+        self.grid.pix_origin = self.to_local(*self.center)
+        self.grid[(0, 0)] = self.origin
+        self.state = State(cell=self.origin,
+                           neighbors=self.grid.neighbors(self.origin))
+        self._place_agent(self.state.cell)
 
-    def _place_agent_widget(self, cell):
+    def _place_agent(self, cell):
         # TODO: Can use vectors with add capability?
-        # TODO: what if agent has more information apart from location?
-        self.agent_loc = (cell.q, cell.r)
-        self.agent_widget.center = list(
-            map(lambda x, y: x + y, self.pix_origin, cell.pixcenter))
-
-    def _create_mesh(self, cell):
-        ''' Returns a mesh for the cell. '''
-        cx, cy = self.pix_origin
-        vertices = list(chain(*[(x + cx, y + cy, 0, 0)
-                                for x, y in cell.vertices]))
-        indices = list(range(6))
-        return Mesh(vertices=vertices, indices=indices,
-                    mode=self.hex_info.mesh_mode)
+        self.agent_widget.center = tuple(
+            map(lambda x, y: x + y, self.grid.pix_origin, cell.pixcenter))
 
     def on_touch_down(self, touch):
         super().on_touch_down(touch)
 
         x, y = self.to_local(touch.x, touch.y)
-        x -= self.pix_origin[0]
-        y -= self.pix_origin[1]
+        x -= self.grid.pix_origin[0]
+        y -= self.grid.pix_origin[1]
         # FIXME: Doesn't look right
+        # TODO: Make grid return q, r from touch local position
         q, r = self.origin.pixel_to_hex(x, y)
         if (q, r) in self.grid:
             print("Touched ({}, {}) in {}.".format(q, r, (x, y)))
         else:
-            # Implicitly creating hex values.
-            # TODO: Is there a better explicit way?
-            self.canvas.add(self._create_mesh(self.grid[(q, r)]))
+            self.grid.set_default((q, r))
             for di in range(6):
                 nei_c = Hex.neighbor_coordinates(q, r, di)
-                if nei_c not in self.grid:
-                    # Implicitly creating hex values.
-                    self.canvas.add(self._create_mesh(self.grid[nei_c]))
-
-        self._place_agent_widget(self.grid[(q, r)])
+                self.grid.set_default(nei_c)
 
         return True
 
     # TODO: Shouldn't this feel better in SwarmApp?
     def update(self, dt):
-        rnd = random.choice(range(6))
-        nei = Hex.neighbor_coordinates(
-            self.agent_loc[0], self.agent_loc[1], rnd)
-        # TODO: Don't like it. Can canvas be in Grid?
-        if nei not in self.grid:
-            self.canvas.add(self._create_mesh(self.grid[nei]))
-        self._place_agent_widget(self.grid[nei])
+        action = Action(ActionType.MOVE, random.choice(range(6)))
+        self.state = action.perform(self.grid, self.state)
+        self._place_agent(self.state.cell)
+        self.grid.set_default((self.state.cell.q, self.state.cell.r))
 
 
 class SwarmApp(App):
