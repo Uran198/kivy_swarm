@@ -90,12 +90,12 @@ class Agent(object):
 # neighbors, as well as generate the list of vertices in the Field class.
 # Unless they'll contain some information.
 class Hex(object):
+    # Directions toward adjacent cells.
     dirs = [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)]
 
     def __init__(self, q, r, size):
         '''
-        Initiates the Hex, with the coordinates q, r in Axial coordinates
-        and the origin in (x_off, y_off) in the pixel coordinates.
+        Initiates the Hex, with the coordinates q, r in Axial coordinates.
 
         For more information on the Axial coordinates and hex coordinate system
         and algorithms check out http://www.redblobgames.com/grids/hexagons/ by
@@ -105,17 +105,8 @@ class Hex(object):
         self.r = r
         self.size = size
 
-    def create_neighbor(self, di):
-        '''
-        Returns newly created neighbor of the cell in the direction di,
-        which should be between 0 and 6 as per Hex.dirs.
-        '''
-        if di < 0 or di > 6:
-            raise NotImplemented
-        return self + Hex.dirs[di]
-
     @staticmethod
-    def neighbor_coordinates(q, r, di):
+    def get_neighbor(q, r, di):
         '''
         Returns tuple of coordinates of the neighbor in the given direction di.
         '''
@@ -129,62 +120,6 @@ class Hex(object):
         x = self.size * np.sqrt(3) * (self.q + self.r / 2)
         y = self.size * 3 / 2 * self.r
         return float(x), float(y)
-
-    @property
-    def vertices(self):
-        x, y = self.pixcenter
-        return [(float(x + np.cos(np.pi * (i + 0.5) / 3) * self.size),
-                 float(y + np.sin(np.pi * (i + 0.5) / 3) * self.size))
-                for i in range(6)]
-
-    def pixel_to_hex(self, x, y):
-        '''
-        Converts pos in pixel coordinates with offset to (q, r) pair in
-        Axial coordinates.
-        '''
-        q = (x * np.sqrt(3) / 3 - y / 3) / self.size
-        r = y * 2 / 3 / self.size
-
-        return Hex.axial_round(q, r)
-
-    @staticmethod
-    def axial_round(q, r):
-        '''
-        Converting to Cube coordinates, rounding up to nearest integers and
-        resetting the component with biggest change so that x+y+z=0 stands.
-        '''
-        ccs = [q, -q - r, r]
-        ind = np.argmax([np.abs(np.rint(x) - x) for x in ccs])
-        ccs = [int(np.rint(x)) for x in ccs]
-        ccs[ind] = - ccs[(ind + 1) % 3] - ccs[(ind + 2) % 3]
-
-        return ccs[0], ccs[2]
-
-    def __add__(self, other):
-        if isinstance(other, Hex):
-            return Hex(self.q + other.q, self.r + other.r, self.size)
-        elif isinstance(other, tuple) and len(other) == 2:
-            return Hex(self.q + other[0], self.r + other[1], self.size)
-        else:
-            raise NotImplemented
-
-    def __radd__(self, other):
-        if isinstance(other, tuple):
-            return Hex(self.q + other[0], self.r + other[1], self.size)
-        else:
-            raise NotImplemented
-
-    def __iadd__(self, other):
-        if isinstance(other, Hex):
-            self.q += other.q
-            self.r += other.r
-            return self
-        elif isinstance(other, tuple) and len(other) == 2:
-            self.q += other[0]
-            self.r += other[1]
-            return self
-        else:
-            raise NotImplemented
 
 
 # TODO: Still feels strange to have so much logic here and feels not right to
@@ -220,13 +155,10 @@ class Grid(dict):
         if not isinstance(key, tuple) or len(key) != 2:
             raise KeyError
 
-        cx, cy = self.pix_origin
-        vertices = list(chain(*[(x + cx, y + cy, 0, 0)
-                                for x, y in cell.vertices]))
-        indices = list(range(6))
         # TODO: Should this be here? Where should it be?
-        self.canvas.add(
-            Mesh(vertices=vertices, indices=indices, mode=self.mesh_mode))
+        self.canvas.add(Mesh(vertices=self._mesh_vertices(cell),
+                             indices=list(range(6)),
+                             mode=self.mesh_mode))
         return super().__setitem__(key, cell)
 
     def set_default(self, key):
@@ -234,12 +166,45 @@ class Grid(dict):
         if key not in self:
             self[key] = self.__missing__(key)
 
+    def _mesh_vertices(self, cell):
+        x, y = cell.pixcenter
+        cx, cy = self.pix_origin
+        return list(chain(*[
+            (float(cx + x + np.cos(np.pi * (i + 0.5) / 3) * self.cell_size),
+             float(cy + y + np.sin(np.pi * (i + 0.5) / 3) * self.cell_size),
+             0, 0) for i in range(6)]))
+
     def neighbors(self, cell):
         result = []
         for di in range(6):
-            nq, nr = Hex.neighbor_coordinates(cell.q, cell.r, di)
+            nq, nr = Hex.get_neighbor(cell.q, cell.r, di)
             result.append(self[(nq, nr)])
         return result
+
+    def pixel_to_hex(self, x, y):
+        '''
+        Converts pos in pixel coordinates with offset to (q, r) pair in
+        Axial coordinates.
+        '''
+        x -= self.pix_origin[0]
+        y -= self.pix_origin[1]
+        q = (x * np.sqrt(3) / 3 - y / 3) / self.cell_size
+        r = y * 2 / 3 / self.cell_size
+
+        return Grid.axial_round(q, r)
+
+    @staticmethod
+    def axial_round(q, r):
+        '''
+        Converting to Cube coordinates, rounding up to nearest integers and
+        resetting the component with biggest change so that x+y+z=0 stands.
+        '''
+        ccs = [q, -q - r, r]
+        ind = np.argmax([np.abs(np.rint(x) - x) for x in ccs])
+        ccs = [int(np.rint(x)) for x in ccs]
+        ccs[ind] = - ccs[(ind + 1) % 3] - ccs[(ind + 2) % 3]
+
+        return ccs[0], ccs[2]
 
 
 class Field(ScatterPlane):
@@ -251,7 +216,6 @@ class Field(ScatterPlane):
     def __init__(self, cell_size=25, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.origin = Hex(0, 0, cell_size)
         self.grid = Grid(self.canvas, 'line_loop', Color(), cell_size)
 
         # At the __init__ height and width, and consecutively center may be not
@@ -263,9 +227,9 @@ class Field(ScatterPlane):
     def _init_after(self, dt):
         ''' Perform initializations after the layout is finalized. '''
         self.grid.pix_origin = self.to_local(*self.center)
-        self.grid[(0, 0)] = self.origin
-        self.state = State(cell=self.origin,
-                           neighbors=self.grid.neighbors(self.origin))
+        self.grid.set_default((0, 0))
+        self.state = State(cell=self.grid[(0, 0)],
+                           neighbors=self.grid.neighbors(self.grid[(0, 0)]))
         self._place_agent(self.state.cell)
 
     def _place_agent(self, cell):
@@ -277,17 +241,14 @@ class Field(ScatterPlane):
         super().on_touch_down(touch)
 
         x, y = self.to_local(touch.x, touch.y)
-        x -= self.grid.pix_origin[0]
-        y -= self.grid.pix_origin[1]
-        # FIXME: Doesn't look right
-        # TODO: Make grid return q, r from touch local position
-        q, r = self.origin.pixel_to_hex(x, y)
+        q, r = self.grid.pixel_to_hex(x, y)
+
         if (q, r) in self.grid:
             print("Touched ({}, {}) in {}.".format(q, r, (x, y)))
         else:
             self.grid.set_default((q, r))
             for di in range(6):
-                nei_c = Hex.neighbor_coordinates(q, r, di)
+                nei_c = Hex.get_neighbor(q, r, di)
                 self.grid.set_default(nei_c)
 
         return True
