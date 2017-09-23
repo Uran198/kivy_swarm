@@ -45,12 +45,13 @@ class BaseGrid():
     dirs = [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)]
 
     def __init__(self, *args, **kwargs):
-        self.cells = {}
+        self._cells = {}
 
     def init(self, q, r):
         ''' Initiates cell with coordinates q, r. '''
-        food = np.random.choice([1, 0], p=[0.1, 0.9])
-        self.cells[q, r] = Hex(q, r, food)
+        if (q, r) not in self:
+            food = np.random.choice([1, 0], p=[0.3, 0.7])
+            self.__setitem__((q, r), Hex(q, r, food))
 
     def neighbor_dir(self, q, r, d):
         # This raise condition is not expected to be handled.
@@ -58,32 +59,41 @@ class BaseGrid():
 
         q += BaseGrid.dirs[d][0]
         r += BaseGrid.dirs[d][1]
-        if (q, r) not in self.cells:
+        if (q, r) not in self._cells:
             self.init(q, r)
-        return self.cells[q, r]
+        return self._cells[q, r]
 
     def neighbors(self, q, r):
-        for d in BaseGrid.dirs:
+        for d, _ in enumerate(BaseGrid.dirs):
             yield self.neighbor_dir(q, r, d)
+
+    def __contains__(self, key):
+        return key in self._cells
+
+    def _clean_key(self, key):
+        ''' Can clean up everything related to key. '''
+        pass
 
     def __setitem__(self, key, val):
         if len(key) != 2:
-            raise KeyError
-        self.cells[key] = val
+            raise IndexError
+        if key in self._cells:
+            # TODO: Is it better to use __delitem__ ?
+            self._clean_key(key)
+        self._cells[key] = val
 
     def __getitem__(self, key):
         if len(key) != 2:
-            raise KeyError
-        if key not in self.cells:
+            raise IndexError
+        if key not in self._cells:
             self.init(*key)
-        return self.cells[key]
+        return self._cells[key]
 
 
 class Env(object):
     ''' Environment with which the agent can interact. '''
-    def __init__(self, grid_cls=BaseGrid):
-        self.grid = grid_cls()
-        self.grid_cls = grid_cls
+    def __init__(self):
+        self.grid = None
 
     def step(self, action):
         '''
@@ -97,18 +107,18 @@ class Env(object):
             self.agent_pos = cell.q, cell.r
             neighbors = self.grid.neighbors(*self.agent_pos)
             reward = cell.food
-            self.grid[cell.q, cell.r] = cell._replace(food=0)
+            if reward > 0:
+                self.grid[cell.q, cell.r] = cell._replace(food=0)
             state = State(cell=cell, neighbors=neighbors)
 
         return state, reward, False
 
-    # TODO: Should accept grid for custom maps?
-    def reset(self):
+    def reset(self, grid):
         '''
         Reset environment to the initial state.
         Returns the initial state.
         '''
-        self.grid = self.grid_cls()
+        self.grid = grid
         self.agent_pos = 0, 0
         state = State(cell=self.grid[self.agent_pos],
                       neighbors=self.grid.neighbors(*self.agent_pos))
@@ -128,7 +138,8 @@ class Env(object):
 
 if __name__ == '__main__':
     env = Env()
-    state = env.reset()
+    grid = BaseGrid()
+    state = env.reset(grid)
     done = False
     tot_reward = 0
     while not done:
@@ -136,3 +147,4 @@ if __name__ == '__main__':
         state, reward, done = env.step(action)
         tot_reward += reward
         print(state, reward, tot_reward)
+        exit(0)

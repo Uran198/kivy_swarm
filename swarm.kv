@@ -1,6 +1,7 @@
 #:kivy 1.10.0
 
 <AgentWidget>:
+    # TODO: use texture with repeat patter instead of this and drawing cells
     canvas:
         Color:
             rgba: 1, 0, 0, 1
@@ -9,8 +10,26 @@
             pos: self.pos
 
 <Field>:
-    # TODO: use texture with repeat patter instead of this
+    total_reward: 0
     agent_widget: agent
     AgentWidget:
         id: agent
         size: 20, 20
+
+<BoxLayout>:
+    orientation: 'vertical'
+
+    Label:
+        text: "Reward {}".format(field.total_reward)
+        size_hint: 0.1, 0.1
+        canvas:
+            Color:
+                rgba: 0, 0, 1, 0.2
+            Rectangle:
+                size: self.size
+                pos: self.pos
+
+    Field:
+        id: field
+        center: root.center
+        size: root.size
