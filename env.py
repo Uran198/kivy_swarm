@@ -113,11 +113,13 @@ class Env(object):
 
         return state, reward, False
 
-    def reset(self, grid):
+    def reset(self, grid=None):
         '''
         Reset environment to the initial state.
         Returns the initial state.
         '''
+        if grid is None:
+            grid = BaseGrid()
         self.grid = grid
         self.agent_pos = 0, 0
         state = State(cell=self.grid[self.agent_pos],
