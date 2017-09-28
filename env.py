@@ -64,8 +64,10 @@ class BaseGrid():
         return self._cells[q, r]
 
     def neighbors(self, q, r):
+        res = []
         for d, _ in enumerate(BaseGrid.dirs):
-            yield self.neighbor_dir(q, r, d)
+            res.append(self.neighbor_dir(q, r, d))
+        return res
 
     def __contains__(self, key):
         return key in self._cells
@@ -92,8 +94,9 @@ class BaseGrid():
 
 class Env(object):
     ''' Environment with which the agent can interact. '''
-    def __init__(self):
+    def __init__(self, num_steps=None):
         self.grid = None
+        self.num_steps = num_steps
 
     def step(self, action):
         '''
@@ -110,9 +113,14 @@ class Env(object):
             if reward > 0:
                 self.grid[cell.q, cell.r] = cell._replace(food=0)
             state = State(cell=cell, neighbors=neighbors)
+        if self.num_steps is None:
+            done = False
+        else:
+            self.steps += 1
+            done = self.steps >= self.num_steps
+        return state, reward, done
 
-        return state, reward, False
-
+    # TODO: Move num_steps to init
     def reset(self, grid=None):
         '''
         Reset environment to the initial state.
@@ -121,6 +129,7 @@ class Env(object):
         if grid is None:
             grid = BaseGrid()
         self.grid = grid
+        self.steps = 0
         self.agent_pos = 0, 0
         state = State(cell=self.grid[self.agent_pos],
                       neighbors=self.grid.neighbors(*self.agent_pos))
