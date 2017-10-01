@@ -14,9 +14,10 @@ from kivy.uix.boxlayout import BoxLayout
 
 from itertools import chain
 import numpy as np
-import random
+from collections import deque
 
 from env import BaseGrid, Env
+from sarsa import Sarsa
 
 
 class AgentWidget(Widget):
@@ -26,6 +27,8 @@ class AgentWidget(Widget):
     pass
 
 
+# TODO: Remove this class. For now only represent approximate plan for a
+#       project.
 class Agent(object):
     '''
     A programmable agent to simulate individuals in the swarm.
@@ -137,6 +140,7 @@ class Field(ScatterPlane):
     '''
     agent_widget = ObjectProperty(None)
     total_reward = NumericProperty(0)
+    best_action = ObjectProperty(deque())
 
     def __init__(self, cell_size=25, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -146,11 +150,17 @@ class Field(ScatterPlane):
         # established, yet due to layout logic.
         Clock.schedule_once(self._init_after)
 
-        Clock.schedule_interval(self.update, 1)
+        Clock.schedule_interval(self.update, 0.1)
 
     def _init_after(self, dt):
         ''' Perform initializations after the layout is finalized. '''
         self.env = Env()
+        self.sarsa = Sarsa()
+        # TODO: Move params to config file
+        # Using another environment with BaseGrid for speedup and limited
+        # number of steps
+        learn_env = Env(num_steps=500)
+        self.sarsa.learn(learn_env, 5, 0.5)
         self.grid = Grid(self.canvas, 'line_loop', Color(), self.cell_size,
                          self.to_local(*self.center))
         self.state = self.env.reset(self.grid)
@@ -158,6 +168,7 @@ class Field(ScatterPlane):
 
     def _place_agent(self, cell):
         self.agent_widget.center = self.grid.pixcenter(cell.q, cell.r)
+        # FIXME
         for _ in self.grid.neighbors(cell.q, cell.r):
             pass
 
@@ -178,8 +189,20 @@ class Field(ScatterPlane):
 
     # TODO: Shouldn't this feel better in SwarmApp?
     def update(self, dt):
-        action = random.choice(self.env.all_actions())
-        self.state, reward, done = self.env.step(action)
+        action = self.sarsa.policy(self.state)
+        next_state, reward, done = self.env.step(action)
+        self.sarsa.adapt_policy(self.state, action, next_state, reward)
+
+        if self.state.neighbors[action.di].food > 0:
+            self.best_action.append(1)
+        elif all(x.food == 0 for x in self.state.neighbors):
+            self.best_action.append(1)
+        else:
+            self.best_action.append(0)
+        if len(self.best_action) > 100:
+            self.best_action.popleft()
+        print(self.best_action.count(1))
+        self.state = next_state
         self.total_reward += int(reward)
         self._place_agent(self.state.cell)
 

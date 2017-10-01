@@ -1,4 +1,3 @@
-from copy import deepcopy
 import numpy as np
 from collections import defaultdict
 
@@ -15,8 +14,10 @@ class Sarsa:
         self.features = list(range(1 << 6))
         self.actions = [Action(ActionType.MOVE, di) for di in range(6)]
         self.value_action = [[0 for _ in self.actions] for _ in self.features]
-        self.vis_state_action = deepcopy(self.value_action)
+        self.vis_state_action = [[0 for _ in self.actions]
+                                 for _ in self.features]
         self.vis_state = [0 for _ in self.features]
+        self.reset_learning()
 
     def feature(self, state):
         res = 0
@@ -55,27 +56,40 @@ class Sarsa:
     def learn(self, env, num_episodes, lmda):
         for time in range(num_episodes):
             state = env.reset()
-            action = self.policy(state)
-            feature = self.feature(state)
-            e_trace = defaultdict(lambda: 0)
+            self.reset_learning(lmda)
             done = False
             while not done:
-                self.visit(feature, action)
+                action = self.policy(state)
                 next_state, reward, done = env.step(action)
-                next_action = self.policy(next_state)
-                next_feature = self.feature(next_state)
 
-                ret = reward + self.value_action[next_feature][next_action.di]
-                td_error = ret - self.value_action[feature][action.di]
-                e_trace[feature, action] += 1
-                for f in self.features:
-                    for a in self.actions:
-                        upd = self.alpha(f, a) * td_error * e_trace[f, a]
-                        self.value_action[f][a.di] += upd
-                        e_trace[f, a] *= lmda
+                self.adapt_policy(state, action, next_state, reward)
+
                 state = next_state
-                action = next_action
-                feature = next_feature
+
+    def reset_learning(self, lmda=0.5):
+        '''
+        Resets the learning scheme. In terms of td learning resets e trace.
+        '''
+        self.e_trace = defaultdict(lambda: 0)
+        self.lmda = lmda
+
+    def adapt_policy(self, state, action, next_state, reward):
+        ''' Makes correction to the policy. '''
+        next_action = self.policy(next_state)
+        feature = self.feature(state)
+        next_feature = self.feature(next_state)
+
+        self.visit(feature, action)
+
+        ret = reward + self.value_action[next_feature][next_action.di]
+        td_error = ret - self.value_action[feature][action.di]
+        self.e_trace[feature, action] += 1
+
+        for f in self.features:
+            for a in self.actions:
+                upd = self.alpha(f, a) * td_error * self.e_trace[f, a]
+                self.value_action[f][a.di] += upd
+                self.e_trace[f, a] *= self.lmda
 
 
 def main():
