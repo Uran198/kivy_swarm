@@ -2,6 +2,7 @@ import numpy as np
 from collections import defaultdict
 
 from env import Env, Action, ActionType
+import pickle
 
 
 class Sarsa:
@@ -11,7 +12,7 @@ class Sarsa:
         # Assume for now that food in each hex can be at most 1.
         # Represent state as 6 integers represing food in different dirs. Where
         # agent stand food is always 0.
-        self.features = list(range(1 << 6))
+        self.features = list(range(1 << 7))
         self.actions = [Action(ActionType.MOVE, di) for di in range(6)]
         self.value_action = [[0 for _ in self.actions] for _ in self.features]
         self.vis_state_action = [[0 for _ in self.actions]
@@ -21,17 +22,22 @@ class Sarsa:
 
     def feature(self, state):
         res = 0
-        for d, sn in enumerate(state.neighbors):
-            if sn.food > 0:
-                res += (1 << d)
+        if state.food == 0:
+            for d, sn in enumerate(state.neighbors):
+                if sn.food > 0:
+                    res += (1 << d)
+        else:
+            for d, sn in enumerate(state.neighbors):
+                if sn.scent >= 1:
+                    res += (1 << d)
+        res += state.food * (1 << 6)
         return res
 
-    def policy(self, state):
+    def policy(self, state, explore=True):
         """Returns an action to take from state."""
         f = self.feature(state)
         eps = self.exp_prob(f)
-        if np.random.choice([True, False], p=[eps, 1 - eps]):
-            # explore
+        if explore and np.random.choice([True, False], p=[eps, 1 - eps]):
             action = np.random.choice(self.actions)
         else:
             ind = np.argmax([self.value_action[f][a.di]
@@ -66,11 +72,15 @@ class Sarsa:
 
                 state = next_state
 
+    @staticmethod
+    def e_trace_factory():
+        return 0
+
     def reset_learning(self, lmda=0.5):
         '''
         Resets the learning scheme. In terms of td learning resets e trace.
         '''
-        self.e_trace = defaultdict(lambda: 0)
+        self.e_trace = defaultdict(self.e_trace_factory)
         self.lmda = lmda
 
     def adapt_policy(self, state, action, next_state, reward):
@@ -96,8 +106,10 @@ def main():
     sarsa = Sarsa()
     env = Env(num_steps=50)
     sarsa.learn(env, 400, 0.5)
-    for act in sarsa.value_action:
-        print(act)
+    for fea, act in enumerate(sarsa.value_action):
+        print("{:#08b}".format(fea), act)
+    with open('sarsa.pickle', 'wb') as fd:
+        pickle.dump(sarsa, fd)
 
 
 if __name__ == "__main__":
