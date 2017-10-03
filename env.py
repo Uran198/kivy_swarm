@@ -66,10 +66,8 @@ class BaseGrid():
         return self._cells[q, r]
 
     def neighbors(self, q, r):
-        res = []
-        for d, _ in enumerate(BaseGrid.dirs):
-            res.append(self.neighbor_dir(q, r, d))
-        return res
+        return [self.neighbor_dir(q, r, d)
+                for d, _ in enumerate(BaseGrid.dirs)]
 
     def __contains__(self, key):
         return key in self._cells

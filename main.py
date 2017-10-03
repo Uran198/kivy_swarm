@@ -176,6 +176,8 @@ class Field(ScatterPlane):
 
         if (q, r) in self.grid:
             print("Touched ({}, {}) in {}.".format(q, r, (x, y)))
+            print("env tvisited", self.env.tvisited[q, r])
+            print("state food", self.state.food)
         else:
             self.grid.init(q, r)
             for _ in self.grid.neighbors(q, r):
